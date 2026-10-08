@@ -2815,3 +2815,31 @@ def test_completed_display_alias_cannot_replace_public_condition_id(client, comp
         assert alias.status_code == 200, alias.text
         assert alias.json()["status"] == "complete", alias.json()
         assert alias.json()["value"] == "OTHER", alias.json()
+
+@pytest.mark.parametrize("computed_first", [True, False])
+def test_duplicate_display_alias_retains_public_config_order(client, computed_first):
+    tc, Session, _ = client
+    wid = _mk_workbook(Session, [])
+    source = {"id": "b", "name": "Shared", "type": "input"}
+    computed = {"id": "a", "name": "Shared", "type": "formula",
+                "formula": "'OTHER'"}
+    columns = [computed, source] if computed_first else [source, computed]
+    columns.append({"id": "result", "name": "Result", "type": "formula",
+                    "formula": "{Shared}"})
+    for column in columns:
+        added = tc.post(f"/api/workbooks/{wid}/columns", json={"column": column})
+        assert added.status_code == 200, added.text
+    original = {"b": "500", "a": "STALE"}
+    completed = {"status": "complete", "value": "OTHER"}
+    row_id = _mk_row(Session, wid, original, {"a": completed})
+    response = tc.post(f"/api/workbooks/{wid}/rows/{row_id}/cells/result/run",
+                       json={"force": True})
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "complete", response.json()
+    expected = "500" if computed_first else "OTHER"
+    assert response.json()["value"] == expected, response.json()
+    with Session() as db:
+        row = db.get(WorkbookRow, row_id)
+        assert row.data == original
+        assert row.enrichments["a"] == completed
+        assert row.enrichments["result"]["value"] == expected
