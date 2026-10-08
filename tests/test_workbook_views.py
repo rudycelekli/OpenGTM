@@ -2817,7 +2817,7 @@ def test_completed_display_alias_cannot_replace_public_condition_id(client, comp
         assert alias.json()["value"] == "OTHER", alias.json()
 
 @pytest.mark.parametrize("computed_first", [True, False])
-def test_duplicate_display_alias_retains_public_config_order(client, computed_first):
+def test_duplicate_display_alias_rejects_ambiguous_public_reference(client, computed_first):
     tc, Session, _ = client
     wid = _mk_workbook(Session, [])
     source = {"id": "b", "name": "Shared", "type": "input"}
@@ -2835,11 +2835,13 @@ def test_duplicate_display_alias_retains_public_config_order(client, computed_fi
     response = tc.post(f"/api/workbooks/{wid}/rows/{row_id}/cells/result/run",
                        json={"force": True})
     assert response.status_code == 200, response.text
-    assert response.json()["status"] == "complete", response.json()
-    expected = "500" if computed_first else "OTHER"
-    assert response.json()["value"] == expected, response.json()
+    assert response.json()["status"] == "error", response.json()
+    assert response.json()["error"] == "ambiguous_column_reference", response.json()
+    assert response.json()["value"] is None, response.json()
     with Session() as db:
         row = db.get(WorkbookRow, row_id)
         assert row.data == original
         assert row.enrichments["a"] == completed
-        assert row.enrichments["result"]["value"] == expected
+        assert row.enrichments["result"]["status"] == "error"
+        assert row.enrichments["result"]["error"] == "ambiguous_column_reference"
+        assert row.enrichments["result"]["value"] is None
