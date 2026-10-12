@@ -536,7 +536,7 @@ class LeadDB:
         offset = (max(1, page) - 1) * max(1, page_size)
         rows = self.conn.execute(
             f"SELECT l.* FROM leads l WHERE {where} "
-            "ORDER BY l.score DESC LIMIT ? OFFSET ?",
+            "ORDER BY l.score DESC, l.id LIMIT ? OFFSET ?",
             params + [max(1, page_size), offset],
         ).fetchall()
         return [dict(row) for row in rows], total

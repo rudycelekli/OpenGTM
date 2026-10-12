@@ -2414,6 +2414,7 @@ async def migrate_workbook_to_v2(
     # Page the source instead of marking a first-page snapshot as migrated.
     # Flush bounded row batches, but commit the complete snapshot and marker
     # together so a later page failure cannot strand a partial migration.
+    # This intentionally holds one write transaction across all source pages.
     lead_db = ctx.lead_db()
     migrated = 0
     page = 1

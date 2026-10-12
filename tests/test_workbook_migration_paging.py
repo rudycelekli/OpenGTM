@@ -12,14 +12,15 @@ from apps.api.services.workbook.models import Workbook, WorkbookEnrichment, Work
 
 
 @pytest.mark.parametrize("count", [0, 2, 500, 501, 1001])
-def test_migration_snapshots_all_pages(count):
+@pytest.mark.parametrize("tied", [False, True])
+def test_migration_snapshots_all_pages(count, tied):
     workspace = "migration-proof-" + uuid.uuid4().hex
     token = current_workspace_var.set(workspace)
     ctx = WorkspaceCtx(user=None, workspace_id=workspace, slug=workspace)
     try:
         store = ctx.lead_db()
         try:
-            ids = [store.upsert_lead(Lead(company=f"Company {i}", city="Proof", score=count-i,
+            ids = [store.upsert_lead(Lead(company=f"Company {i}", city="Proof", score=0 if tied else count-i,
                                           workspace_id=workspace)) for i in range(count)]
             store.upsert_lead(Lead(company="Excluded company", city="Elsewhere", workspace_id=workspace))
         finally:
@@ -40,6 +41,7 @@ def test_migration_snapshots_all_pages(count):
         with SessionLocal() as db:
             rows = db.query(WorkbookRow).filter_by(workbook_id=wid).order_by(WorkbookRow.position).all()
             assert [row.lead_id for row in rows] == ids
+            assert len({row.lead_id for row in rows}) == count
             assert [row.position for row in rows] == list(range(count))
             if rows:
                 assert rows[-1].enrichments["tail"]["value"] == "tail result"
