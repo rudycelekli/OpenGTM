@@ -349,7 +349,7 @@ class PgLeadStore:
 
             total = q.count()
             rows = (
-                q.order_by(LeadRow.score.desc())
+                q.order_by(LeadRow.score.desc(), LeadRow.id)
                 .limit(max(1, page_size))
                 .offset((max(1, page) - 1) * max(1, page_size))
                 .all()
