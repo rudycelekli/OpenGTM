@@ -1,4 +1,4 @@
-name: Reviewed OpenGTM native candidate proof
+name: Reviewed stale SQL native proof
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: reviewed-opengtm-${{ github.ref }}
+  group: reviewed-stale-sql-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -19,10 +19,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: rudycelekli/OpenGTM
-          ref: 6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102
+          ref: dfc09d98586f4a4c75672d350e0b3404f0af54db
           persist-credentials: false
       - name: Verify reviewed source
-        run: test "$(git rev-parse HEAD)" = "6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102"
+        run: test "$(git rev-parse HEAD)" = "dfc09d98586f4a4c75672d350e0b3404f0af54db"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
@@ -53,10 +53,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: rudycelekli/OpenGTM
-          ref: 6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102
+          ref: dfc09d98586f4a4c75672d350e0b3404f0af54db
           persist-credentials: false
       - name: Verify reviewed source
-        run: test "$(git rev-parse HEAD)" = "6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102"
+        run: test "$(git rev-parse HEAD)" = "dfc09d98586f4a4c75672d350e0b3404f0af54db"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
@@ -76,10 +76,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: rudycelekli/OpenGTM
-          ref: 6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102
+          ref: dfc09d98586f4a4c75672d350e0b3404f0af54db
           persist-credentials: false
       - name: Verify reviewed source
-        run: test "$(git rev-parse HEAD)" = "6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102"
+        run: test "$(git rev-parse HEAD)" = "dfc09d98586f4a4c75672d350e0b3404f0af54db"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
@@ -97,10 +97,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: rudycelekli/OpenGTM
-          ref: 6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102
+          ref: dfc09d98586f4a4c75672d350e0b3404f0af54db
           persist-credentials: false
       - name: Verify reviewed source
-        run: test "$(git rev-parse HEAD)" = "6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102"
+        run: test "$(git rev-parse HEAD)" = "dfc09d98586f4a4c75672d350e0b3404f0af54db"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
@@ -120,105 +120,123 @@ jobs:
             tests/test_lead_selection_browser.py \
             tests/test_workbook_clipboard_browser.py
   causal:
-    name: Actual column edit API causal proof
+    name: Native stale SQL SQLite and PostgreSQL parity
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: opengtm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opengtm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/opengtm_test
     steps:
       - uses: actions/checkout@v7
         with:
           repository: rudycelekli/OpenGTM
-          ref: 6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102
+          ref: dfc09d98586f4a4c75672d350e0b3404f0af54db
           persist-credentials: false
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
           enable-cache: true
-      - name: Original fails and candidate passes actual API boundary
+      - name: Original payload loads fail, semantic controls pass, candidate passes
         shell: bash
         run: |
           python - <<'PYPROOF'
-          import re
           import xml.etree.ElementTree as ET
           
-          CONTROL_NAME = "test_normalized_column_reference_blocks_delete_and_breaking_rename"
-          CASE_PREFIX = "test_structure_edit_does_not_redirect_or_block_another_stable_id"
-          
-          def validate_causal(xml_text, operations):
+          def validate_causal(xml_text, performance_names, control_names):
               root = ET.fromstring(xml_text)
-              expected = {f"{CASE_PREFIX}[{operation}]" for operation in operations}
-              cases = root.findall(".//testcase")
-              assert len(cases) == len(expected) + 1
-              assert {case.get("name") for case in cases} == expected | {CONTROL_NAME}
+              cases = root.findall('.//testcase')
+              expected = set(performance_names) | set(control_names)
+              assert len(cases) == len(expected)
+              assert {case.get('name') for case in cases} == expected
+              assert not root.findall('.//error') and not root.findall('.//skipped')
               for case in cases:
-                  assert case.find("error") is None and case.find("skipped") is None
-                  failure = case.find("failure")
-                  if case.get("name") == CONTROL_NAME:
+                  failure = case.find('failure')
+                  if case.get('name') in control_names:
                       assert failure is None
                       continue
                   assert failure is not None
-                  message = failure.get("message", "")
-                  text = failure.text or ""
-                  # Both the actual failing assertion and its runtime values must match.
-                  # Other failures in the same test (e.g. job count) are not this proof.
-                  assert "assert response.status_code == 200" in text
-                  assert re.search(r"(?:^|\n)assert 409 == 200(?:\n|$)", message)
-                  assert "<Response [409 Conflict]>.status_code" in message
+                  message, text = failure.get('message', ''), failure.text or ''
+                  assert 'assert loaded == []' in text
+                  assert "assert ['WorkbookRow" in message
+                  assert "Left contains 128 more items, first extra item: 'WorkbookRow'" in message
                   assert not any(marker in message + text for marker in (
-                      "ModuleNotFoundError", "ImportError", "TimeoutError", "ERROR collecting"))
-              failures = root.findall(".//failure")
-              assert len(failures) == len(expected)
-              assert not root.findall(".//error") and not root.findall(".//skipped")
+                      'ModuleNotFoundError', 'ImportError', 'TimeoutError', 'ERROR collecting'))
+              assert len(root.findall('.//failure')) == len(performance_names)
           
-          def validate_passes(xml_text, operations):
+          def validate_passes(xml_text, names):
               root = ET.fromstring(xml_text)
-              expected = {f"{CASE_PREFIX}[{operation}]" for operation in operations} | {CONTROL_NAME}
-              cases = root.findall(".//testcase")
-              assert len(cases) == len(expected)
-              assert {case.get("name") for case in cases} == expected
-              assert not root.findall(".//failure") and not root.findall(".//error") and not root.findall(".//skipped")
+              cases = root.findall('.//testcase')
+              assert len(cases) == len(names) and {case.get('name') for case in cases} == set(names)
+              assert not root.findall('.//failure') and not root.findall('.//error') and not root.findall('.//skipped')
           
-          import hashlib, json, os, pathlib, re, subprocess
+          import hashlib, io, json, os, pathlib, subprocess
           root = pathlib.Path.cwd()
-          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "opengtm-causal"
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'stale-sql-proof'
           out.mkdir(parents=True, exist_ok=True)
-          expected = "6ffa03b45a24c28eaa9c4c36d8ed393c6a1cc102"
+          head = "dfc09d98586f4a4c75672d350e0b3404f0af54db"
           base = "9188fc4d040c186f3495902fe77e0d041deba3bd"
-          assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == expected
-          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == head
+          tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
           def hashes():
               return {f: hashlib.sha256((root / f).read_bytes()).hexdigest() for f in tracked if f}
-          before_hashes = hashes()
-          path = root / "apps/api/services/workbook/column_deps.py"
+          tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip()
+          assert tree == 'dc934508d3f597949210d5edab17136da588425b'
+          original_hashes = hashes()
+          objects = [head + ':' + f for f in tracked if f]
+          batch = subprocess.run(['git', 'cat-file', '--batch'], input=('\n'.join(objects) + '\n').encode(), capture_output=True, check=True, timeout=60)
+          stream = io.BytesIO(batch.stdout)
+          frozen_hashes = {}
+          for name in [f for f in tracked if f]:
+              header = stream.readline().decode().strip().split()
+              assert len(header) == 3 and header[1] == 'blob'
+              content = stream.read(int(header[2]))
+              assert stream.read(1) == b'\n'
+              frozen_hashes[name] = hashlib.sha256(content).hexdigest()
+          assert original_hashes == frozen_hashes, 'working files must match frozen candidate Git blobs' 
+          path = root / 'apps/api/services/workbook/refresh.py'
           candidate = path.read_bytes()
-          subprocess.run(["git", "fetch", "--no-tags", "https://github.com/debpalash/OpenGTM.git", base], check=True)
-          original = subprocess.check_output(["git", "show", base + ":apps/api/services/workbook/column_deps.py"])
-          env = dict(os.environ, APP_ENV="test", YUPCHA_DB_INIT="alembic", DATABASE_URL="sqlite:///" + str(out / "fixture.db"))
-          cmd = ["uv", "run", "--frozen", "pytest", "-q", *["tests/test_workbook_views.py::test_structure_edit_does_not_redirect_or_block_another_stable_id[" + operation + "]" for operation in ["delete", "rename", "replace"]], "tests/test_workbook_views.py::test_normalized_column_reference_blocks_delete_and_breaking_rename"]
+          subprocess.run(['git', 'fetch', '--no-tags', 'https://github.com/debpalash/OpenGTM.git', base], check=True)
+          original = subprocess.check_output(['git', 'show', base + ':apps/api/services/workbook/refresh.py'])
+          env = dict(os.environ, APP_ENV='test', YUPCHA_DB_INIT='alembic', DATABASE_URL='sqlite:///' + str(out / 'fixture.db'))
+          cmd = ['uv', 'run', '--frozen', 'pytest', '-q', 'tests/test_workbook_refresh_stale_sql.py', 'tests/test_workbook_refresh_stale_pg.py']
+          performance = ['test_fresh_workbook_reads_no_row_or_overlay_payload_objects', 'test_postgres_fresh_selection_materializes_no_payload_models']
+          controls = ['test_stale_selection_uses_per_field_ttl_and_preserves_linked_execution_keys', 'test_missing_failed_null_and_cutoff_cells_keep_their_exact_selection', 'test_empty_and_unrelated_overlay_columns_do_not_change_selection', 'test_postgres_stale_ids_preserve_ttl_legacy_keys_nulls_cutoff_and_scope']
           results = {}
           try:
               path.write_bytes(original)
-              result = subprocess.run(cmd + ["--junitxml=" + str(out / "before.xml")], env=env, capture_output=True, text=True, timeout=120)
-              log = result.stdout + result.stderr
-              (out / "before.log").write_text(log)
-              assert result.returncode == 1, "original must fail through real API assertions"
-              validate_causal((out / "before.xml").read_text(), ["delete", "rename", "replace"])
-              results["before"] = {"exit": result.returncode, "causal_failures": 3, "control_pass": 1}
+              result = subprocess.run(cmd + ['--junitxml=' + str(out / 'before.xml')], env=env, capture_output=True, text=True, timeout=180)
+              (out / 'before.log').write_text(result.stdout + result.stderr)
+              assert result.returncode == 1
+              validate_causal((out / 'before.xml').read_text(), performance, controls)
+              results['before'] = {'performance_failures': 2, 'semantic_control_passes': 4}
               path.write_bytes(candidate)
-              result = subprocess.run(cmd + ["--junitxml=" + str(out / "after.xml")], env=env, capture_output=True, text=True, timeout=120)
-              log = result.stdout + result.stderr
-              (out / "after.log").write_text(log)
+              result = subprocess.run(cmd + ['--junitxml=' + str(out / 'after.xml')], env=env, capture_output=True, text=True, timeout=180)
+              (out / 'after.log').write_text(result.stdout + result.stderr)
               assert result.returncode == 0
-              validate_passes((out / "after.xml").read_text(), ["delete", "rename", "replace"])
-              results["after"] = {"exit": result.returncode, "passes": 4}
+              validate_passes((out / 'after.xml').read_text(), performance + controls)
+              results['after'] = {'passes': 6}
           finally:
               path.write_bytes(candidate)
-              assert hashes() == before_hashes, "tracked source must be unchanged"
-              (out / "receipt.json").write_text(json.dumps({"head": expected, "base": base, "commands": cmd, "results": results, "source_unchanged": True}, indent=2))
+              assert hashes() == original_hashes
+              (out / 'receipt.json').write_text(json.dumps({'head': head, 'base': base, 'commands': cmd, 'results': results, 'source_unchanged': True, 'source_tree': tree, 'frozen_git_blob_sha256': frozen_hashes, 'restored_fs_sha256': hashes(), 'scope': 'scalar stale IDs stream; total stale result remains materialized; per-column SQL queries; no latency claim'}, indent=2))
           PYPROOF
-      - name: Preserve causal results
+      - name: Preserve source-bound causal results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: opengtm-column-edit-causal
-          path: ${{ runner.temp }}/opengtm-causal/
+          name: opengtm-stale-sql-causal
+          path: ${{ runner.temp }}/stale-sql-proof/
           retention-days: 7
