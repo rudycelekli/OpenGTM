@@ -38,11 +38,11 @@ if os.environ.get("OPENGTM_M0_FIXTURE") == "owned-ephemeral-v1":
                 else:
                     from apps.api.services.leadgen.enrichment.provider import EnrichmentProvider, EnrichmentResult
                     class FixtureProvider(EnrichmentProvider):
-                        name = "website_scraper"
-                        capabilities = ["description"]
+                        name = "hunter_io"
+                        capabilities = ["email"]
                         async def enrich(self, lead):
                             raise RuntimeError("fixture must use native killable provider pool")
-                    module._registry = {"website_scraper": FixtureProvider()}
+                    module._registry = {"hunter_io": FixtureProvider()}
         class FixtureFinder(importlib.abc.MetaPathFinder):
             def find_spec(self, fullname, path=None, target=None):
                 if fullname not in targets: return None

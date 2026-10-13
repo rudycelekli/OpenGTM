@@ -20,9 +20,9 @@ def validate(receipt, *, require_baseline=False):
         native = row.get("execution_result") or {}
         if any(type(native.get(k)) is not int for k in ("completed", "errors", "total", "rows")) or type(native.get("stopped")) is not bool: failures.append("receipt-types")
         if row.get("job_status") != "completed" or native != {"completed": 1, "errors": 0, "total": 1, "rows": 1, "stopped": False}: failures.append("native-receipt")
-        if row.get("outcome") != "success" or row.get("status") != "complete" or row.get("value") != "M0 synthetic result" or row.get("provider") != "website_scraper": failures.append("result")
+        if row.get("outcome") != "success" or row.get("status") != "complete" or row.get("value") != "m0@fixture.example" or row.get("provider") != "hunter_io": failures.append("result")
         prov = row.get("provenance")
-        if not isinstance(prov, dict) or set(prov) != {"source", "license", "confidence", "fetched_at"} or prov.get("source") != "website_scraper" or prov.get("license") != "scraped" or type(prov.get("confidence")) not in (float, int) or type(prov.get("confidence")) is bool or prov.get("confidence") != 1.0:
+        if not isinstance(prov, dict) or set(prov) != {"source", "license", "confidence", "fetched_at"} or prov.get("source") != "hunter_io" or prov.get("license") != "proprietary-api" or type(prov.get("confidence")) not in (float, int) or type(prov.get("confidence")) is bool or prov.get("confidence") != 1.0:
             failures.append("evidence")
         try:
             stamp = datetime.fromisoformat((prov or {}).get("fetched_at", ""))
@@ -31,7 +31,7 @@ def validate(receipt, *, require_baseline=False):
         attempts = row.get("attempts", [])
         if not attempts or any(a.get("status") != "settled" or type(a.get("settled_microusd")) is not int or a.get("settled_microusd") != 0 for a in attempts): failures.append("accounting")
         for a in attempts:
-            expected = [key[0], key[1], f"job:{row.get('job')}", f"row:{key[2]}", key[3], "website_scraper"]
+            expected = [key[0], key[1], f"job:{row.get('job')}", f"row:{key[2]}", key[3], "hunter_io"]
             linked = [a.get(k) for k in ("workspace_id", "workbook_id", "run_id", "row_identity", "column_id", "provider")]
             digest = hashlib.sha256(json.dumps(expected, separators=(",", ":")).encode()).hexdigest()
             if linked != expected or a.get("attempt_key") != digest: failures.append("attempt-link")
@@ -40,7 +40,7 @@ def validate(receipt, *, require_baseline=False):
             accounting_keys.add(unique)
             envelope = a.get("result") or {}
             result = envelope.get("result") or {}
-            if envelope.get("accounting_basis") != "confirmed_nonbillable" or result.get("provider") != "website_scraper" or result.get("success") is not True or result.get("fields") != {"description": "M0 synthetic result"} or type((result.get("billing_evidence") or {}).get("charged_microusd")) is not int or {k: (result.get("billing_evidence") or {}).get(k) for k in ("charged_microusd", "reference")} != {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE"}: failures.append("accounting-evidence")
+            if envelope.get("accounting_basis") != "confirmed_nonbillable" or result.get("provider") != "hunter_io" or result.get("success") is not True or result.get("fields") != {"email": "m0@fixture.example"} or type((result.get("billing_evidence") or {}).get("charged_microusd")) is not int or {k: (result.get("billing_evidence") or {}).get(k) for k in ("charged_microusd", "reference")} != {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE"}: failures.append("accounting-evidence")
             executor = ((a.get("result") or {}).get("result", {}).get("billing_evidence") or {}).get("fixture_executor")
             if not isinstance(executor, dict) or executor.get("start_method") != "forkserver" or type(executor.get("provider_workers")) is not int or executor.get("provider_workers") != 8 or type(executor.get("pid")) is not int or executor.get("pid", 0) <= 0: failures.append("provider-executor")
         keys = [a.get("attempt_key") for a in attempts]

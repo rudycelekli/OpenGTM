@@ -10,3 +10,5 @@ Controlled 30-minute baseline requires dedicated fixed hardware, PostgreSQL dura
 
 Local control command: `python -m pytest test_validator.py -q`.
 Hosted reviewed command supplies M0_SOURCE_DIR (frozen base checkout), M0_FIXTURE_DIR (this reviewed packet), M0_OUTPUT_DIR (owned receipt directory) then runs `bash isolated-smoke.sh`. Workflow still requires exact fixture hashes and canonical source guards before dispatch.
+
+Fixture note: simulate catalog-known paid hunter_io/email to exercise real native reservation/settlement. Catalog exposure is retained, synthetic confirmed-nonbillable settlement is zero. No real Hunter API credential/request is used. This does not measure live Hunter behavior or cost. Free-provider paths do not create WorkbookSpendAttempt and therefore cannot satisfy this fixture accounting contract.

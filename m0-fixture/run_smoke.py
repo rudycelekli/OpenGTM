@@ -35,13 +35,13 @@ async def main():
         wid = "m0-" + uuid.uuid4().hex
         with workspace_scope(tenant), SessionLocal() as db:
             db.add(Workbook(id=wid, workspace_id=tenant, name="M0 synthetic smoke", columns_config=[
-                {"id": "description", "name": "Description", "type": "enrichment", "target_field": "description", "provider": "website_scraper"}]))
+                {"id": "email", "name": "Email", "type": "enrichment", "target_field": "email", "provider": "hunter_io"}]))
             db.flush()
             row = WorkbookRow(workbook_id=wid, workspace_id=tenant, position=1,
                               data={"company": "success"}, enrichments={})
             db.add(row); db.commit(); db.refresh(row)
             job = q.add_job(db, "run_workbook", {"workspace_id": tenant, "workbook_id": wid,
-              "column_ids": ["description"], "row_ids": [row.id], "retry_passes": 0,
+              "column_ids": ["email"], "row_ids": [row.id], "retry_passes": 0,
               "provider_timeout": 2, "force": True})
             ids.append((tenant, wid, row.id, job.id))
     await q.start_worker()
@@ -59,11 +59,11 @@ async def main():
     for tenant, wid, rid, jid in ids:
         with workspace_scope(tenant), SessionLocal() as db:
             job = db.get(Job, jid)
-            cell = db.query(WorkbookEnrichment).filter_by(workbook_id=wid, lead_id=rid, column_id="description").one()
+            cell = db.query(WorkbookEnrichment).filter_by(workbook_id=wid, lead_id=rid, column_id="email").one()
             attempts = db.query(WorkbookSpendAttempt).filter_by(workspace_id=tenant, workbook_id=wid, run_id=f"job:{jid}").all()
             records.append({"workspace": tenant, "job_workspace": job.workspace_id, "workbook": wid,
-              "row": rid, "job": jid, "column": "description", "job_status": job.status,
-              "execution_result": {k: ((job.payload or {}).get("execution_result") or {}).get(k) for k in ("completed", "errors", "total", "rows", "stopped")}, "outcome": "success" if cell.status == "complete" and cell.value == "M0 synthetic result" else "unknown",
+              "row": rid, "job": jid, "column": "email", "job_status": job.status,
+              "execution_result": {k: ((job.payload or {}).get("execution_result") or {}).get(k) for k in ("completed", "errors", "total", "rows", "stopped")}, "outcome": "success" if cell.status == "complete" and cell.value == "m0@fixture.example" else "unknown",
               "status": cell.status, "value": cell.value, "provider": cell.provider,
               "provenance": (cell.cell_metadata or {}).get("provenance"),
               "attempts": [{k: getattr(a, k) for k in ("attempt_key", "status", "settled_microusd", "workspace_id", "workbook_id", "run_id", "row_identity", "column_id", "provider", "result")} for a in attempts]})
