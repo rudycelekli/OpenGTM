@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           test "$(git -C packet rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(sha256sum packet/m0-fixture/review-packet.json | cut -d' ' -f1)" = "b93254093817b8636afb4d4ffcf19e9fe3de6536568eee0375742c49f74ffd95"
+          test "$(sha256sum packet/m0-fixture/review-packet.json | cut -d' ' -f1)" = "7816c4a286e7bc5c1cb5b491b929b5a45e824be2f9a61658cffbb85937ae3cde"
           test "$(git -C source rev-parse HEAD)" = 9188fc4d040c186f3495902fe77e0d041deba3bd
           python - <<'PYGUARD'
           import hashlib,json

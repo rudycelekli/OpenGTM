@@ -44,6 +44,7 @@ def validate(receipt, *, require_baseline=False):
         keys = [a.get("attempt_key") for a in attempts]
         if not all(keys) or len(keys) != len(set(keys)): failures.append("duplicate-accounting")
     if require_baseline:
+        failures.append("baseline-not-implemented")
         if receipt.get("steady_seconds", 0) < 1800: failures.append("steady-duration")
         if not receipt.get("controlled_runner") or not receipt.get("overload_recovery"): failures.append("controlled-runner")
         if not receipt.get("metric_series"): failures.append("metrics")

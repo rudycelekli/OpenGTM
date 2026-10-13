@@ -49,3 +49,6 @@ def test_missing_artifact_binding_rejected():
 
 def test_boolean_accounting_amount_rejected():
     r=fixture(); r["records"][0]["attempts"][0]["result"]["result"]["billing_evidence"]["charged_microusd"]=False; assert "accounting-evidence" in validate(r)
+
+def test_fabricated_long_baseline_rejected():
+    r=fixture(); r.update(steady_seconds=1800, controlled_runner=True, overload_recovery=True, metric_series=[{}]); assert "baseline-not-implemented" in validate(r, require_baseline=True)
