@@ -71,7 +71,7 @@ async def main():
       "duration_seconds": time.monotonic() - started, "records": records,
       "source_binding": binding,
       "worker_config": {"concurrency": q.concurrency, "max_active_per_workspace": q.max_active_per_workspace, "shutdown_grace": q.shutdown_grace,
-                        "provider_executors": [(a.get("result") or {}).get("result", {}).get("fixture_executor") for row in records for a in row["attempts"]]},
+                        "provider_executors": [(a.get("result") or {}).get("result", {}).get("billing_evidence", {}).get("fixture_executor") for row in records for a in row["attempts"]]},
       "baseline_completed": False, "validation_failures": []}
     verify_binding()
     receipt["validation_failures"] = validate(receipt)

@@ -16,5 +16,5 @@ def provider_job(provider_name, lead_dict):
     return {"provider": provider_name, "success": success,
             "fields": {"description": "M0 synthetic result"} if success else {},
             "confidence": 1.0, "error": "fixture:" + scenario if not success else "",
-            "billing_evidence": {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE"},
-            "license": "unknown", "fixture_executor": {"start_method": multiprocessing.get_start_method(), "provider_workers": int(os.environ.get("WORKBOOK_PROVIDER_WORKERS", "8")), "pid": os.getpid()}}
+            "billing_evidence": {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE", "fixture_executor": {"start_method": multiprocessing.get_start_method(), "provider_workers": int(os.environ.get("WORKBOOK_PROVIDER_WORKERS", "8")), "pid": os.getpid()}},
+            "license": "unknown"}

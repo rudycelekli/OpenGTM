@@ -40,7 +40,9 @@ def validate(receipt, *, require_baseline=False):
             accounting_keys.add(unique)
             envelope = a.get("result") or {}
             result = envelope.get("result") or {}
-            if envelope.get("accounting_basis") != "confirmed_nonbillable" or result.get("provider") != "website_scraper" or result.get("success") is not True or result.get("fields") != {"description": "M0 synthetic result"} or type((result.get("billing_evidence") or {}).get("charged_microusd")) is not int or result.get("billing_evidence") != {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE"}: failures.append("accounting-evidence")
+            if envelope.get("accounting_basis") != "confirmed_nonbillable" or result.get("provider") != "website_scraper" or result.get("success") is not True or result.get("fields") != {"description": "M0 synthetic result"} or type((result.get("billing_evidence") or {}).get("charged_microusd")) is not int or {k: (result.get("billing_evidence") or {}).get(k) for k in ("charged_microusd", "reference")} != {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE"}: failures.append("accounting-evidence")
+            executor = ((a.get("result") or {}).get("result", {}).get("billing_evidence") or {}).get("fixture_executor")
+            if not isinstance(executor, dict) or executor.get("start_method") != "forkserver" or type(executor.get("provider_workers")) is not int or executor.get("provider_workers") != 8 or type(executor.get("pid")) is not int or executor.get("pid", 0) <= 0: failures.append("provider-executor")
         keys = [a.get("attempt_key") for a in attempts]
         if not all(keys) or len(keys) != len(set(keys)): failures.append("duplicate-accounting")
     if require_baseline:

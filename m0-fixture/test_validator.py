@@ -5,7 +5,7 @@ def fixture():
     import hashlib,json
     a = dict(workspace_id="tenant", workbook_id="wb", run_id="job:1", row_identity="row:1", column_id="description", provider="website_scraper", status="settled", settled_microusd=0)
     a["attempt_key"] = hashlib.sha256(json.dumps(["tenant", "wb", "job:1", "row:1", "description", "website_scraper"], separators=(",", ":")).encode()).hexdigest()
-    a["result"] = {"accounting_basis": "confirmed_nonbillable", "result": {"provider": "website_scraper", "success": True, "fields": {"description": "M0 synthetic result"}, "billing_evidence": {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE"}}}
+    a["result"] = {"accounting_basis": "confirmed_nonbillable", "result": {"provider": "website_scraper", "success": True, "fields": {"description": "M0 synthetic result"}, "billing_evidence": {"charged_microusd": 0, "reference": "SIMULATED-M0-NO-VENDOR-CHARGE", "fixture_executor": {"start_method": "forkserver", "provider_workers": 8, "pid": 123}}}}
     return {"provenance": "simulated-provider-native-worker", "external_spend_microusd": 0,
       "source_binding": {"head": "9188fc4d040c186f3495902fe77e0d041deba3bd", "tree": "f629a70255256e629a6e0737269413194dd62d7b", "source_hashes": {"synthetic-control": "0"*64}, "fixture_hashes": {name: "0"*64 for name in ("run_smoke.py", "validator.py", "simulator.py", "sitecustomize.py")}}, "records": [{"workspace": "tenant", "job_workspace": "tenant", "workbook": "wb", "row": 1, "job": 1,
       "column": "description", "job_status": "completed", "execution_result": {"completed": 1, "errors": 0, "total": 1, "rows": 1, "stopped": False},
@@ -52,3 +52,6 @@ def test_boolean_accounting_amount_rejected():
 
 def test_fabricated_long_baseline_rejected():
     r=fixture(); r.update(steady_seconds=1800, controlled_runner=True, overload_recovery=True, metric_series=[{}]); assert "baseline-not-implemented" in validate(r, require_baseline=True)
+
+def test_missing_native_executor_config_rejected():
+    r=fixture(); del r["records"][0]["attempts"][0]["result"]["result"]["billing_evidence"]["fixture_executor"]; assert "provider-executor" in validate(r)

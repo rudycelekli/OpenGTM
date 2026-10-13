@@ -1,6 +1,6 @@
 # Private M0 harness draft
 
-Root review is required before executing `isolated-smoke.sh`. Source and SQL candidate refs are unchanged. `test_validator.py` has eight local contract controls; these are synthetic evaluator tests, not a native completion proof.
+Root review is required before executing `isolated-smoke.sh`. Source and SQL candidate refs are unchanged. `test_validator.py` has 19 local contract controls; these are synthetic evaluator tests, not a native completion proof.
 
 The runnable draft uses an archived exact base checkout, frozen dependencies in an image, ephemeral internal Docker network/PostgreSQL, and a fixture-only Python bootstrap. Native QueueService and job subprocess remain unchanged. Provider operation and registry availability are replaced in memory only for this synthetic fixture process tree. The queue/result/accounting observer reads committed database state. No ambient credentials or .env are copied from the working directory. Python connection restriction is defense in depth; actual no-egress depends on Docker internal networking.
 
