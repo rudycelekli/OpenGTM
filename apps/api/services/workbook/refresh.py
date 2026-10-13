@@ -19,6 +19,8 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
+from sqlalchemy import and_, case, or_
+
 from apps.api.database import SessionLocal
 from apps.api.services.workbook.models import Workbook, WorkbookRow, WorkbookEnrichment
 from apps.api.services.workbook.activity_models import WorkbookActivity
@@ -53,36 +55,37 @@ def _interval_minutes(policy: dict) -> Optional[int]:
 
 
 def _stale_row_columns(db, workbook_id: str, enrichment_cols: List[dict], ttl_map: dict) -> dict[str, list[str]]:
-    """Exact enrichment cells missing, failed or older than their field's TTL."""
-    rows = db.query(WorkbookRow).filter(WorkbookRow.workbook_id == workbook_id).all()
-    if not rows:
+    """Select stale cell IDs without loading every row's JSON and result body."""
+    rows = db.query(WorkbookRow.id).filter(WorkbookRow.workbook_id == workbook_id)
+    if rows.first() is None:
         return {}
-    # Legacy overlay keys follow the execution key (linked lead id or row id).
-    overlays = db.query(WorkbookEnrichment).filter(
-        WorkbookEnrichment.workbook_id == workbook_id
-    ).all()
-    seen = {(o.lead_id, o.column_id): o for o in overlays}
-
+    # Preserve legacy execution keys, including a falsey lead_id fallback.
+    execution_key = case(
+        (and_(WorkbookRow.lead_id.is_not(None), WorkbookRow.lead_id != 0), WorkbookRow.lead_id),
+        else_=WorkbookRow.id,
+    )
     stale = {}
     now = _now()
-    for row in rows:
-        row_id = row.id
-        lead_id = row.lead_id or row_id
-        for col in enrichment_cols:
-            cid = col.get("id")
-            ttl_days = ttl_map.get(col.get("target_field") or cid, DEFAULT_STALENESS_DAYS)
-            o = seen.get((lead_id, cid))
-            if o is None or o.status != "complete":
-                stale.setdefault(str(row_id), []).append(cid)
-                continue
-            upd = o.updated_at
-            if upd is None:
-                stale.setdefault(str(row_id), []).append(cid)
-                continue
-            if upd.tzinfo is None:
-                upd = upd.replace(tzinfo=timezone.utc)
-            if upd < now - timedelta(days=ttl_days):
-                stale.setdefault(str(row_id), []).append(cid)
+    for col in enrichment_cols:
+        cid = col.get("id")
+        ttl_days = ttl_map.get(col.get("target_field") or cid, DEFAULT_STALENESS_DAYS)
+        # Overlay timestamps use DateTime without timezone; existing reads treat
+        # naive stored values as UTC. Bind a matching UTC-naive cutoff in SQL.
+        cutoff = (now - timedelta(days=ttl_days)).astimezone(timezone.utc).replace(tzinfo=None)
+        query = rows.outerjoin(WorkbookEnrichment, and_(
+            WorkbookEnrichment.workbook_id == workbook_id,
+            WorkbookEnrichment.lead_id == execution_key,
+            WorkbookEnrichment.column_id == cid,
+        )).filter(or_(
+            WorkbookEnrichment.id.is_(None),
+            WorkbookEnrichment.status.is_(None),
+            WorkbookEnrichment.status != "complete",
+            WorkbookEnrichment.updated_at.is_(None),
+            WorkbookEnrichment.updated_at < cutoff,
+        )).order_by(WorkbookRow.id)
+        # Stream only scalar stale IDs, not fresh row payloads or all overlays.
+        for (row_id,) in query.yield_per(500):
+            stale.setdefault(str(row_id), []).append(cid)
     return stale
 
 
