@@ -1,17 +1,14 @@
-name: PR checks
+name: Reviewed OpenGTM native candidate proof
 
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: reviewed-opengtm-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   backend:
@@ -21,7 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: rudycelekli/OpenGTM
+          ref: df0cdd997b67a361220b2c768e81d859df949a40
           persist-credentials: false
+      - name: Verify reviewed source
+        run: test "$(git rev-parse HEAD)" = "df0cdd997b67a361220b2c768e81d859df949a40"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
@@ -51,7 +52,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: rudycelekli/OpenGTM
+          ref: df0cdd997b67a361220b2c768e81d859df949a40
           persist-credentials: false
+      - name: Verify reviewed source
+        run: test "$(git rev-parse HEAD)" = "df0cdd997b67a361220b2c768e81d859df949a40"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
@@ -70,7 +75,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: rudycelekli/OpenGTM
+          ref: df0cdd997b67a361220b2c768e81d859df949a40
           persist-credentials: false
+      - name: Verify reviewed source
+        run: test "$(git rev-parse HEAD)" = "df0cdd997b67a361220b2c768e81d859df949a40"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
@@ -87,7 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: rudycelekli/OpenGTM
+          ref: df0cdd997b67a361220b2c768e81d859df949a40
           persist-credentials: false
+      - name: Verify reviewed source
+        run: test "$(git rev-parse HEAD)" = "df0cdd997b67a361220b2c768e81d859df949a40"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
@@ -106,3 +119,106 @@ jobs:
             tests/test_workbook_socket_browser.py \
             tests/test_lead_selection_browser.py \
             tests/test_workbook_clipboard_browser.py
+  causal:
+    name: Actual column edit API causal proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: rudycelekli/OpenGTM
+          ref: df0cdd997b67a361220b2c768e81d859df949a40
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - name: Original fails and candidate passes actual API boundary
+        shell: bash
+        run: |
+          python - <<'PYPROOF'
+          import re
+          import xml.etree.ElementTree as ET
+          
+          CONTROL_NAME = "test_normalized_column_reference_blocks_delete_and_breaking_rename"
+          CASE_PREFIX = "test_structure_edit_does_not_redirect_or_block_another_stable_id"
+          
+          def validate_causal(xml_text, operations):
+              root = ET.fromstring(xml_text)
+              expected = {f"{CASE_PREFIX}[{operation}]" for operation in operations}
+              cases = root.findall(".//testcase")
+              assert len(cases) == len(expected) + 1
+              assert {case.get("name") for case in cases} == expected | {CONTROL_NAME}
+              for case in cases:
+                  assert case.find("error") is None and case.find("skipped") is None
+                  failure = case.find("failure")
+                  if case.get("name") == CONTROL_NAME:
+                      assert failure is None
+                      continue
+                  assert failure is not None
+                  message = failure.get("message", "")
+                  text = failure.text or ""
+                  # Both the actual failing assertion and its runtime values must match.
+                  # Other failures in the same test (e.g. job count) are not this proof.
+                  assert "assert response.status_code == 200" in text
+                  assert re.search(r"(?:^|\n)assert 409 == 200(?:\n|$)", message)
+                  assert "<Response [409 Conflict]>.status_code" in message
+                  assert not any(marker in message + text for marker in (
+                      "ModuleNotFoundError", "ImportError", "TimeoutError", "ERROR collecting"))
+              failures = root.findall(".//failure")
+              assert len(failures) == len(expected)
+              assert not root.findall(".//error") and not root.findall(".//skipped")
+          
+          def validate_passes(xml_text, operations):
+              root = ET.fromstring(xml_text)
+              expected = {f"{CASE_PREFIX}[{operation}]" for operation in operations} | {CONTROL_NAME}
+              cases = root.findall(".//testcase")
+              assert len(cases) == len(expected)
+              assert {case.get("name") for case in cases} == expected
+              assert not root.findall(".//failure") and not root.findall(".//error") and not root.findall(".//skipped")
+          
+          import hashlib, json, os, pathlib, re, subprocess
+          root = pathlib.Path.cwd()
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "opengtm-causal"
+          out.mkdir(parents=True, exist_ok=True)
+          expected = "df0cdd997b67a361220b2c768e81d859df949a40"
+          base = "9188fc4d040c186f3495902fe77e0d041deba3bd"
+          assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == expected
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          def hashes():
+              return {f: hashlib.sha256((root / f).read_bytes()).hexdigest() for f in tracked if f}
+          before_hashes = hashes()
+          path = root / "apps/api/services/workbook/column_deps.py"
+          candidate = path.read_bytes()
+          subprocess.run(["git", "fetch", "--no-tags", "https://github.com/debpalash/OpenGTM.git", base], check=True)
+          original = subprocess.check_output(["git", "show", base + ":apps/api/services/workbook/column_deps.py"])
+          env = dict(os.environ, APP_ENV="test", YUPCHA_DB_INIT="alembic", DATABASE_URL="sqlite:///" + str(out / "fixture.db"))
+          cmd = ["uv", "run", "--frozen", "pytest", "-q", *["tests/test_workbook_views.py::test_structure_edit_does_not_redirect_or_block_another_stable_id[" + operation + "]" for operation in ["delete", "rename", "replace"]], "tests/test_workbook_views.py::test_normalized_column_reference_blocks_delete_and_breaking_rename"]
+          results = {}
+          try:
+              path.write_bytes(original)
+              result = subprocess.run(cmd + ["--junitxml=" + str(out / "before.xml")], env=env, capture_output=True, text=True, timeout=120)
+              log = result.stdout + result.stderr
+              (out / "before.log").write_text(log)
+              assert result.returncode == 1, "original must fail through real API assertions"
+              validate_causal((out / "before.xml").read_text(), ["delete", "rename", "replace"])
+              results["before"] = {"exit": result.returncode, "causal_failures": 3, "control_pass": 1}
+              path.write_bytes(candidate)
+              result = subprocess.run(cmd + ["--junitxml=" + str(out / "after.xml")], env=env, capture_output=True, text=True, timeout=120)
+              log = result.stdout + result.stderr
+              (out / "after.log").write_text(log)
+              assert result.returncode == 0
+              validate_passes((out / "after.xml").read_text(), ["delete", "rename", "replace"])
+              results["after"] = {"exit": result.returncode, "passes": 4}
+          finally:
+              path.write_bytes(candidate)
+              assert hashes() == before_hashes, "tracked source must be unchanged"
+              (out / "receipt.json").write_text(json.dumps({"head": expected, "base": base, "commands": cmd, "results": results, "source_unchanged": True}, indent=2))
+          PYPROOF
+      - name: Preserve causal results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opengtm-column-edit-causal
+          path: ${{ runner.temp }}/opengtm-causal/
+          retention-days: 7
