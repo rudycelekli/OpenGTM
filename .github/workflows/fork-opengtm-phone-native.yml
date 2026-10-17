@@ -1,0 +1,222 @@
+name: Fork OpenGTM phone correctness qualification
+'on':
+  push:
+    branches:
+    - validation/opengtm-phone-20261016
+permissions:
+  contents: read
+concurrency:
+  group: fork-opengtm-phone
+  cancel-in-progress: false
+jobs:
+  backend:
+    name: Backend tests (SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: a39dd056e9e465532860a55e40930f0da7a41ff2
+        fetch-depth: 3
+    - name: Guard exact frozen source
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+      with:
+        python-version: '3.13'
+        enable-cache: false
+    - name: Causal native phone regression before and after
+      shell: bash
+      run: 'set -euo pipefail
+
+        source=apps/api/services/leadgen/enrichment/normalize.py
+
+        cp "$source" "$RUNNER_TEMP/normalize-fixed.py"
+
+        trap ''cp "$RUNNER_TEMP/normalize-fixed.py" "$source"'' EXIT
+
+        git show ac011a6891749ca456ec4820cd20b28c71479f64:"$source" > "$source"
+
+        set +e
+
+        uv run --frozen pytest tests/test_phone_normalization.py -q > "$RUNNER_TEMP/phone-before.log" 2>&1
+
+        before_rc=$?
+
+        set -e
+
+        cat "$RUNNER_TEMP/phone-before.log"
+
+        test "$before_rc" -eq 1
+
+        grep -F ''3 failed, 16 passed'' "$RUNNER_TEMP/phone-before.log"
+
+        cp "$RUNNER_TEMP/normalize-fixed.py" "$source"
+
+        uv run --frozen pytest tests/test_phone_normalization.py -q
+
+        git diff --exit-code
+
+        '
+    - run: uv run --frozen pytest -q -m 'not live and not postgres'
+    - name: Final frozen source guard
+      if: always()
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    if: github.repository == 'rudycelekli/OpenGTM'
+  postgres:
+    name: PostgreSQL integrity and tenancy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: opengtm_test
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d opengtm_test" --health-interval 5s --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/opengtm_test
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: a39dd056e9e465532860a55e40930f0da7a41ff2
+        fetch-depth: 3
+    - name: Guard exact frozen source
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+      with:
+        python-version: '3.13'
+        enable-cache: false
+    - run: uv run --frozen pytest -q tests/test_create_merge_pg.py tests/test_entity_identity_pg.py tests/test_pg_tenancy_rls.py
+        tests/test_lead_paging_pg.py tests/test_workbook_refresh_stale_sql_pg.py
+    - name: Final frozen source guard
+      if: always()
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    if: github.repository == 'rudycelekli/OpenGTM'
+  frontend:
+    name: Frontend lint, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: a39dd056e9e465532860a55e40930f0da7a41ff2
+        fetch-depth: 3
+    - name: Guard exact frozen source
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: 1.4.2
+    - run: bun install --frozen-lockfile
+    - run: bun run lint
+    - run: bun test apps/web/tests
+    - run: bun test packages/chrome-extension
+    - name: Contributor-required frontend typecheck
+      working-directory: apps/web
+      run: bunx tsc -b
+    - run: bun run build
+    - name: Final frozen source guard
+      if: always()
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    if: github.repository == 'rudycelekli/OpenGTM'
+  frontend-browser:
+    name: Frontend browser regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: a39dd056e9e465532860a55e40930f0da7a41ff2
+        fetch-depth: 3
+    - name: Guard exact frozen source
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+      with:
+        python-version: '3.13'
+        enable-cache: false
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: 1.4.2
+    - run: bun install --frozen-lockfile
+    - run: uv run --frozen playwright install --with-deps chromium
+    - name: Run mounted React interaction regressions
+      shell: bash
+      run: "export OPENGTM_BUN=\"$(command -v bun)\"\nexport OPENGTM_CHROMIUM=\"$(uv run --frozen python -c 'from\
+        \ playwright.sync_api import sync_playwright; p = sync_playwright().start(); print(p.chromium.executable_path);\
+        \ p.stop()')\"\nuv run --frozen pytest -q \\\n  tests/test_workbook_socket_browser.py \\\n  tests/test_lead_selection_browser.py\
+        \ \\\n  tests/test_workbook_clipboard_browser.py\n"
+    - name: Final frozen source guard
+      if: always()
+      run: 'test "$(git rev-parse HEAD)" = a39dd056e9e465532860a55e40930f0da7a41ff2
+
+        test "$(git rev-parse HEAD^{tree})" = 22dad58d5542e6ee8301f35ff52f81b2a0553a79
+
+        test "$(git rev-parse HEAD~2)" = ac011a6891749ca456ec4820cd20b28c71479f64
+
+        git diff --exit-code
+
+        '
+    if: github.repository == 'rudycelekli/OpenGTM'
